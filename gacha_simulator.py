@@ -1,6 +1,7 @@
 import random
 import datetime
 import os
+import json
 
 BASE_RATES = {
     "六星": 2.0,
@@ -8,6 +9,25 @@ BASE_RATES = {
     "四星": 50.0,
     "三星": 40.0,
 }
+
+STATE_FILE = "gacha_state.json"
+
+def load_state():
+    if os.path.exists(STATE_FILE):
+        try:
+            with open(STATE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return data.get("no_six_counter", 0), data.get("no_up_six_streak", 0)
+        except Exception:
+            return 0, 0
+    return 0, 0
+
+
+def save_state(no_six_counter, no_up_six_streak):
+    data = {"no_six_counter": no_six_counter, "no_up_six_streak": no_up_six_streak}
+    with open(STATE_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False)
+
 
 def get_rates_with_pity(no_six_count):
     """根据当前未出六星次数计算每个星级概率。"""
@@ -52,10 +72,8 @@ def format_star_line(star, is_up):
     return f"{symbols.get(star, star)} {star}{up_text}"
 
 
-def simulate(total_draws):
+def simulate(total_draws, no_six_counter, no_up_six_streak):
     counts = {"六星": 0, "六星(UP)": 0, "六星(非UP)": 0, "五星": 0, "四星": 0, "三星": 0}
-    no_six_counter = 0
-    no_up_six_streak = 0
     draw_results = []
 
     for i in range(total_draws):
@@ -83,7 +101,7 @@ def simulate(total_draws):
 
         draw_results.append((star, is_up))
 
-    return counts, draw_results
+    return counts, draw_results, no_six_counter, no_up_six_streak
 
 
 def save_record(mode, n, counts, avg):
@@ -112,20 +130,31 @@ def view_records():
     print()
 
 
+def reset_history_and_state():
+    if os.path.exists("gacha_history.txt"):
+        os.remove("gacha_history.txt")
+    if os.path.exists(STATE_FILE):
+        os.remove(STATE_FILE)
+    print("历史记录和状态已清空。（gacha_history.txt, gacha_state.json）")
+
+
 def main():
     print("抽卡模拟器：六星2%、五星8%、四星50%、三星40%；超过50次未出六星后，每次六星概率+2%（其他按权重缩减）。")
     print("六星出货时，UP六星占六星的50%；若连续两次六星非UP，则下一次六星必为UP。")
 
     while True:
-        mode = input("请选择模式（1=单抽, 2=十连抽, 3=查看记录, q=退出）：").strip()
+        mode = input("请选择模式（1=单抽, 2=十连抽, 3=查看记录, 4=清空记录与状态, q=退出）：").strip()
         if mode == "q":
             print("退出。")
             return
         if mode == "3":
             view_records()
             continue
+        if mode == "4":
+            reset_history_and_state()
+            continue
         if mode not in ["1", "2"]:
-            print("无效输入，请输入1、2、3或q。")
+            print("无效输入，请输入1、2、3、4或q。")
             continue
 
         if mode == "2":
@@ -140,7 +169,9 @@ def main():
                 print("请输入一个正整数。")
                 continue
 
-        counts, draw_results = simulate(n)
+        no_six_counter, no_up_six_streak = load_state()
+        counts, draw_results, no_six_counter, no_up_six_streak = simulate(n, no_six_counter, no_up_six_streak)
+        save_state(no_six_counter, no_up_six_streak)
 
         print(f"\n本轮抽卡 {n} 次结果：")
         for idx, (star, is_up) in enumerate(draw_results, start=1):
